@@ -5,7 +5,7 @@ Uma aplicação FastAPI super simples que permite aos estudantes visualizar e se
 ## Funcionalidades
 
 - Visualizar todas as atividades extracurriculares disponíveis
-- Inscrever-se em atividades
+- Professores autenticados podem inscrever e remover estudantes de atividades
 
 ## Primeiros Passos
 
@@ -30,7 +30,46 @@ Uma aplicação FastAPI super simples que permite aos estudantes visualizar e se
 | Método | Endpoint                                                          | Descrição                                                           |
 | ------ | ----------------------------------------------------------------- | ------------------------------------------------------------------- |
 | GET    | `/activities`                                                     | Obter todas as atividades com seus detalhes e contagem atual de participantes |
-| POST   | `/activities/{activity_name}/signup?email=student@mergington.edu` | Inscrever-se em uma atividade                                       |
+| POST   | `/auth/login`                                                      | Iniciar uma sessão de professor                                     |
+| POST   | `/auth/logout`                                                     | Encerrar a sessão de professor                                      |
+| GET    | `/auth/session`                                                    | Verificar a sessão atual                                            |
+| POST   | `/activities/{activity_name}/signup?email=student@mergington.edu` | Inscrever um estudante (somente professores)                         |
+| DELETE | `/activities/{activity_name}/unregister?email=student@mergington.edu` | Remover um estudante (somente professores)                          |
+
+## Contas de professores
+
+As credenciais são lidas de `teacher_credentials.json`. O arquivo vem sem contas; adicione os usuários e hashes de senha atribuídos aos professores. Senhas são verificadas com PBKDF2-HMAC-SHA256 (600.000 iterações), e não devem ser armazenadas em texto puro nem enviadas ao repositório.
+
+Gere um hash e sal aleatório com Python:
+
+```python
+import hashlib
+import getpass
+import json
+import secrets
+
+password = getpass.getpass("Teacher password: ").encode()
+salt = secrets.token_bytes(16)
+print(json.dumps({
+    "salt": salt.hex(),
+    "password_hash": hashlib.pbkdf2_hmac("sha256", password, salt, 600_000).hex(),
+}, indent=2))
+```
+
+Inclua o objeto gerado em `teachers`, por exemplo:
+
+```json
+{
+  "teachers": {
+    "teacher1": {
+      "salt": "<generated salt>",
+      "password_hash": "<generated password hash>"
+    }
+  }
+}
+```
+
+As sessões são mantidas em memória por até oito horas e terminam quando o servidor reinicia. A lista de participantes continua pública; somente as operações de inscrição e remoção exigem login.
 
 ## Modelo de Dados
 

@@ -3,6 +3,16 @@ document.addEventListener("DOMContentLoaded", () => {
   const activitySelect = document.getElementById("activity");
   const signupForm = document.getElementById("signup-form");
   const messageDiv = document.getElementById("message");
+  const accountButton = document.getElementById("account-button");
+  const accountMenu = document.getElementById("account-menu");
+  const accountStatus = document.getElementById("account-status");
+  const loginButton = document.getElementById("login-button");
+  const logoutButton = document.getElementById("logout-button");
+  const loginDialog = document.getElementById("login-dialog");
+  const loginForm = document.getElementById("login-form");
+  const loginError = document.getElementById("login-error");
+  const teacherOnlyNotice = document.getElementById("teacher-only-notice");
+  let isAuthenticated = false;
 
   // Function to fetch activities from API
   async function fetchActivities() {
@@ -12,6 +22,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
       // Clear loading message
       activitiesList.innerHTML = "";
+      activitySelect.innerHTML =
+        '<option value="">-- Select an activity --</option>';
 
       // Populate activities list
       Object.entries(activities).forEach(([name, details]) => {
@@ -30,7 +42,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 ${details.participants
                   .map(
                     (email) =>
-                      `<li><span class="participant-email">${email}</span><button class="delete-btn" data-activity="${name}" data-email="${email}">❌</button></li>`
+                      `<li><span class="participant-email">${email}</span>${isAuthenticated ? `<button class="delete-btn" data-activity="${name}" data-email="${email}" aria-label="Remove ${email} from ${name}">❌</button>` : ""}</li>`
                   )
                   .join("")}
               </ul>
@@ -66,6 +78,94 @@ document.addEventListener("DOMContentLoaded", () => {
       console.error("Error fetching activities:", error);
     }
   }
+
+  async function refreshAuthentication() {
+    try {
+      const response = await fetch("/auth/session");
+      if (!response.ok) {
+        throw new Error("Unable to check teacher login");
+      }
+      const session = await response.json();
+      isAuthenticated = session.authenticated;
+      accountStatus.textContent = isAuthenticated
+        ? `Signed in as ${session.username}`
+        : "Not signed in";
+      loginButton.classList.toggle("hidden", isAuthenticated);
+      logoutButton.classList.toggle("hidden", !isAuthenticated);
+      signupForm.classList.toggle("hidden", !isAuthenticated);
+      teacherOnlyNotice.classList.toggle("hidden", isAuthenticated);
+    } catch (error) {
+      isAuthenticated = false;
+      signupForm.classList.add("hidden");
+      teacherOnlyNotice.classList.remove("hidden");
+      accountStatus.textContent = "Unable to verify login";
+      loginButton.classList.remove("hidden");
+      logoutButton.classList.add("hidden");
+      console.error("Error checking teacher login:", error);
+    }
+  }
+
+  accountButton.addEventListener("click", () => {
+    const isMenuOpen = !accountMenu.classList.contains("hidden");
+    accountMenu.classList.toggle("hidden", isMenuOpen);
+    accountButton.setAttribute("aria-expanded", String(!isMenuOpen));
+  });
+
+  loginButton.addEventListener("click", () => {
+    accountMenu.classList.add("hidden");
+    accountButton.setAttribute("aria-expanded", "false");
+    loginError.classList.add("hidden");
+    loginDialog.showModal();
+  });
+
+  document.getElementById("cancel-login").addEventListener("click", () => {
+    loginDialog.close();
+  });
+
+  loginForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    loginError.classList.add("hidden");
+
+    const formData = new FormData(loginForm);
+    try {
+      const response = await fetch("/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: formData.get("username"),
+          password: formData.get("password"),
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.detail || "Unable to log in");
+      }
+
+      loginForm.reset();
+      loginDialog.close();
+      await refreshAuthentication();
+      await fetchActivities();
+    } catch (error) {
+      loginError.textContent = error.message || "Unable to log in";
+      loginError.classList.remove("hidden");
+      console.error("Error logging in:", error);
+    }
+  });
+
+  logoutButton.addEventListener("click", async () => {
+    try {
+      const response = await fetch("/auth/logout", { method: "POST" });
+      if (!response.ok) {
+        throw new Error("Unable to log out");
+      }
+      await refreshAuthentication();
+      await fetchActivities();
+      accountMenu.classList.add("hidden");
+      accountButton.setAttribute("aria-expanded", "false");
+    } catch (error) {
+      console.error("Error logging out:", error);
+    }
+  });
 
   // Handle unregister functionality
   async function handleUnregister(event) {
@@ -156,5 +256,5 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   // Initialize app
-  fetchActivities();
+  refreshAuthentication().then(fetchActivities);
 });
